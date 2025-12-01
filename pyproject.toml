@@ -1,0 +1,13 @@
+[project]
+name = "locateyourphoto"
+version = "0.1.0"
+description = "Add GPS coordinates to photos based on GPX trace files"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "gpxpy>=1.6.2",
+    "piexif>=1.1.3",
+    "pillow>=10.0.0",
+    "python-dateutil>=2.8.2",
+    "exif>=1.6.0",
+]
