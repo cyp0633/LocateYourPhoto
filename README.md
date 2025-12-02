@@ -4,6 +4,8 @@
 
 Did you ever try to browse your photos in a map? Have you ever been annoyed by the instability of Location Information Linkage functionality in your S**y camera? No worries! You can use your phone, your smartwatch, or anything else that records your track to add GPS coordinates to your photos. A GPX trace file is all you need, and this script will do the rest.
 
+Personally, I use [Geo Tracker](https://geo-tracker.org/en/) (Android/iOS) to record my tracks on my phone. GPX file from other apps should also work.
+
 ## Features
 
 - ✅ Parse GPX trace files and extract GPS trackpoints

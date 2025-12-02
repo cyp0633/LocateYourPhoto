@@ -104,7 +104,16 @@ class GPXParser:
 class PhotoProcessor:
     """Handles reading and writing GPS data to photo EXIF."""
     
-    SUPPORTED_EXTENSIONS = {'.jpg', '.jpeg', '.arw', '.nef', '.cr2', '.dng'}
+    SUPPORTED_EXTENSIONS = {
+        # JPEG formats
+        '.jpg', '.jpeg',
+        # RAW formats
+        '.arw', '.nef', '.cr2', '.dng', '.orf', '.rw2', '.raf', '.raw',
+        # Modern formats
+        '.avif', '.heic', '.heif', '.webp',
+        # Other common formats
+        '.tiff', '.tif', '.png'
+    }
     
     def __init__(self, photo_path: Path, time_offset_seconds: float = 0.0):
         self.photo_path = photo_path
