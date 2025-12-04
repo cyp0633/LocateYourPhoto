@@ -34,6 +34,7 @@ public:
     // Photo management
     void addPhoto(const PhotoItem& photo);
     void addPhotos(const QVector<PhotoItem>& photos);
+    void removePhoto(int index);
     void clear();
     
     // Update photo state after processing

@@ -26,6 +26,7 @@ signals:
     void photosDropped(const QStringList& filePaths);
     void photoSelectionChanged(int index);
     void processRequested();
+    void photosCleared();
 
 protected:
     void dragEnterEvent(QDragEnterEvent* event) override;
@@ -35,6 +36,8 @@ protected:
 private slots:
     void onSelectionChanged();
     void updatePhotoCount();
+    void showContextMenu(const QPoint& pos);
+    void onClearPhotos();
 
 private:
     void setupUi();
@@ -43,6 +46,7 @@ private:
     QPushButton* m_loadGpxButton;
     QPushButton* m_addPhotosButton;
     QPushButton* m_processButton;
+    QPushButton* m_clearButton;
     QLabel* m_statusLabel;
     PhotoListModel* m_model = nullptr;
 };

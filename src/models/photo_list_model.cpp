@@ -80,6 +80,16 @@ void PhotoListModel::addPhotos(const QVector<PhotoItem>& photos)
     }
 }
 
+void PhotoListModel::removePhoto(int index)
+{
+    if (index < 0 || index >= m_photos.size())
+        return;
+    
+    beginRemoveRows(QModelIndex(), index, index);
+    m_photos.removeAt(index);
+    endRemoveRows();
+}
+
 void PhotoListModel::clear()
 {
     beginResetModel();

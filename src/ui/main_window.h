@@ -4,6 +4,7 @@
 #include <QSplitter>
 #include <QProgressBar>
 #include <QLabel>
+#include <QDoubleSpinBox>
 
 namespace lyp {
 
@@ -50,6 +51,7 @@ private:
     MapPanel* m_mapPanel;
     QProgressBar* m_progressBar;
     QLabel* m_statusLabel;
+    QDoubleSpinBox* m_timeOffsetSpinBox;
     
     // Core components
     PhotoProcessor* m_processor;

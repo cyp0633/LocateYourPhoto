@@ -9,6 +9,8 @@
 #include <QFileInfo>
 #include <QStyledItemDelegate>
 #include <QPainter>
+#include <QMenu>
+#include <QAction>
 
 namespace lyp {
 
@@ -73,8 +75,22 @@ public:
         painter->restore();
         
         // Draw filename
-        QRect textRect = opt.rect.adjusted(24, 0, 0, 0);
+        QRect textRect = opt.rect.adjusted(24, 0, -80, -14);
         painter->drawText(textRect, Qt::AlignVCenter | Qt::AlignLeft, fileName);
+        
+        // Draw error message or status on second line
+        QString errorMsg = index.data(PhotoListModel::ErrorMessageRole).toString();
+        if (!errorMsg.isEmpty()) {
+            painter->save();
+            painter->setPen(Qt::darkGray);
+            QFont smallFont = painter->font();
+            smallFont.setPointSize(8);
+            painter->setFont(smallFont);
+            QRect errorRect = opt.rect.adjusted(24, 14, -4, 0);
+            QString elidedError = painter->fontMetrics().elidedText(errorMsg, Qt::ElideRight, errorRect.width());
+            painter->drawText(errorRect, Qt::AlignVCenter | Qt::AlignLeft, elidedError);
+            painter->restore();
+        }
         
         // Draw GPS indicator if has existing GPS
         if (hasGps && static_cast<PhotoState>(state) == PhotoState::Pending) {
@@ -83,7 +99,7 @@ public:
             QFont smallFont = painter->font();
             smallFont.setPointSize(9);
             painter->setFont(smallFont);
-            painter->drawText(opt.rect.adjusted(0, 0, -4, 0), Qt::AlignVCenter | Qt::AlignRight, "GPS");
+            painter->drawText(opt.rect.adjusted(0, 0, -4, -14), Qt::AlignVCenter | Qt::AlignRight, "GPS");
             painter->restore();
         }
     }
@@ -92,7 +108,7 @@ public:
     {
         Q_UNUSED(option)
         Q_UNUSED(index)
-        return QSize(200, 28);
+        return QSize(200, 40);  // Taller to show error message
     }
 };
 
@@ -138,6 +154,8 @@ void FileListPanel::setupUi()
     m_listView->setDragDropMode(QAbstractItemView::DropOnly);
     m_listView->setAcceptDrops(true);
     m_listView->setDropIndicatorShown(true);
+    m_listView->setContextMenuPolicy(Qt::CustomContextMenu);
+    connect(m_listView, &QListView::customContextMenuRequested, this, &FileListPanel::showContextMenu);
     layout->addWidget(m_listView, 1);
     
     // Status label
@@ -146,12 +164,22 @@ void FileListPanel::setupUi()
     m_statusLabel->setAlignment(Qt::AlignCenter);
     layout->addWidget(m_statusLabel);
     
-    // Process button
+    // Button row
+    auto* processLayout = new QHBoxLayout();
+    
+    m_clearButton = new QPushButton("Clear", this);
+    m_clearButton->setEnabled(false);
+    m_clearButton->setToolTip("Clear all photos from list");
+    connect(m_clearButton, &QPushButton::clicked, this, &FileListPanel::onClearPhotos);
+    processLayout->addWidget(m_clearButton);
+    
     m_processButton = new QPushButton("Process Photos", this);
     m_processButton->setEnabled(false);
     m_processButton->setToolTip("Add GPS coordinates to photos");
     connect(m_processButton, &QPushButton::clicked, this, &FileListPanel::processRequested);
-    layout->addWidget(m_processButton);
+    processLayout->addWidget(m_processButton);
+    
+    layout->addLayout(processLayout);
 }
 
 void FileListPanel::setModel(PhotoListModel* model)
@@ -180,10 +208,46 @@ void FileListPanel::updatePhotoCount()
         if (count > 0) {
             m_statusLabel->setText(QString("%1 photos").arg(count));
             m_processButton->setEnabled(true);
+            m_clearButton->setEnabled(true);
         } else {
             m_statusLabel->setText("Drag and drop photos here");
             m_processButton->setEnabled(false);
+            m_clearButton->setEnabled(false);
         }
+    }
+}
+
+void FileListPanel::showContextMenu(const QPoint& pos)
+{
+    QModelIndex index = m_listView->indexAt(pos);
+    if (!index.isValid()) return;
+    
+    QMenu menu(this);
+    QAction* removeAction = menu.addAction("Remove");
+    QAction* removeAllAction = menu.addAction("Remove All");
+    
+    QAction* selected = menu.exec(m_listView->viewport()->mapToGlobal(pos));
+    if (selected == removeAction) {
+        QModelIndexList selectedIndexes = m_listView->selectionModel()->selectedIndexes();
+        // Remove in reverse order to maintain valid indices
+        QList<int> rows;
+        for (const QModelIndex& idx : selectedIndexes) {
+            rows.append(idx.row());
+        }
+        std::sort(rows.begin(), rows.end(), std::greater<int>());
+        for (int row : rows) {
+            m_model->removePhoto(row);
+        }
+    } else if (selected == removeAllAction) {
+        onClearPhotos();
+    }
+}
+
+void FileListPanel::onClearPhotos()
+{
+    if (m_model) {
+        m_model->clear();
+        emit photosCleared();
     }
 }
 

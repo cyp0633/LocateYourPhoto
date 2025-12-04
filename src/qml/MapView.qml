@@ -24,6 +24,39 @@ Item {
         center: QtPositioning.coordinate(20.0, 110.0)
         zoomLevel: 12
         
+        // Enable pan and pinch gestures
+        PinchHandler {
+            id: pinch
+            target: null
+            onActiveChanged: if (active) {
+                map.startCentroid = map.toCoordinate(pinch.centroid.position, false)
+            }
+            onScaleChanged: (delta) => {
+                map.zoomLevel += Math.log2(delta)
+                map.alignCoordinateToPoint(map.startCentroid, pinch.centroid.position)
+            }
+            onRotationChanged: (delta) => {
+                map.bearing -= delta
+                map.alignCoordinateToPoint(map.startCentroid, pinch.centroid.position)
+            }
+            grabPermissions: PointerHandler.TakeOverForbidden
+        }
+        
+        WheelHandler {
+            id: wheel
+            acceptedDevices: PointerDevice.Mouse | PointerDevice.TouchPad
+            rotationScale: 1/120
+            property: "zoomLevel"
+        }
+
+        DragHandler {
+            id: drag
+            target: null
+            onTranslationChanged: (delta) => map.pan(-delta.x, -delta.y)
+        }
+        
+        property geoCoordinate startCentroid
+        
         // GPS Track polyline
         MapPolyline {
             id: trackLine

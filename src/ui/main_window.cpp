@@ -16,6 +16,8 @@
 #include <QDoubleSpinBox>
 #include <QCheckBox>
 #include <QDialogButtonBox>
+#include <QToolBar>
+#include <QLabel>
 
 namespace lyp {
 
@@ -78,6 +80,20 @@ void MainWindow::setupUi()
     connect(m_fileListPanel, &FileListPanel::photosDropped, this, &MainWindow::onPhotosDropped);
     connect(m_fileListPanel, &FileListPanel::photoSelectionChanged, this, &MainWindow::onPhotoSelectionChanged);
     connect(m_fileListPanel, &FileListPanel::processRequested, this, &MainWindow::onProcessPhotos);
+    connect(m_fileListPanel, &FileListPanel::photosCleared, m_mapPanel, &MapPanel::clearPhotoMarkers);
+    
+    // Toolbar with time offset
+    QToolBar* toolbar = addToolBar("Settings");
+    toolbar->addWidget(new QLabel(" Time Offset: ", this));
+    m_timeOffsetSpinBox = new QDoubleSpinBox(this);
+    m_timeOffsetSpinBox->setRange(-12.0, 14.0);
+    m_timeOffsetSpinBox->setDecimals(1);
+    m_timeOffsetSpinBox->setSuffix(" h");
+    m_timeOffsetSpinBox->setValue(m_timeOffsetHours);
+    m_timeOffsetSpinBox->setToolTip("Camera timezone offset from UTC\n+8 = Asia/Shanghai, -5 = US Eastern");
+    connect(m_timeOffsetSpinBox, QOverload<double>::of(&QDoubleSpinBox::valueChanged), 
+            [this](double value) { m_timeOffsetHours = value; });
+    toolbar->addWidget(m_timeOffsetSpinBox);
 }
 
 void MainWindow::setupMenus()
@@ -241,6 +257,20 @@ void MainWindow::onGpxLoaded(int trackpointCount)
     m_statusLabel->setText(QString("GPX loaded: %1 trackpoints").arg(trackpointCount));
     m_mapPanel->setTrack(m_processor->trackpoints());
     m_mapPanel->centerOnTrack();
+    
+    // Prompt for timezone if time offset is 0
+    if (m_timeOffsetHours == 0.0) {
+        bool ok;
+        double offset = QInputDialog::getDouble(this, 
+            "Camera Timezone",
+            "Enter your camera's timezone offset from UTC in hours:\n"
+            "(e.g., +8 for Asia/Shanghai, +9 for Japan, -5 for US Eastern)",
+            0.0, -12.0, 14.0, 1, &ok);
+        if (ok) {
+            m_timeOffsetHours = offset;
+            m_timeOffsetSpinBox->setValue(offset);
+        }
+    }
 }
 
 void MainWindow::onGpxLoadError(const QString& error)
