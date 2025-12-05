@@ -1,5 +1,6 @@
 #include "main_window.h"
 #include "core/exif_handler.h"
+#include "core/exiftool_writer.h"
 #include "core/photo_processor.h"
 #include "file_list_panel.h"
 #include "map_panel.h"
@@ -229,38 +230,113 @@ void MainWindow::onProcessPhotos() {
     return;
   }
 
-  // Check for risky file formats before processing
-  QStringList riskyFiles;
-  QStringList minimalFiles;
-  QMap<QString, QString> formatWarnings; // file -> warning message
+  // Check for file formats that need special handling
+  QStringList exiftoolFiles;  // BMFF formats needing exiftool
+  QStringList dangerousFiles; // Dangerous RAW formats
+  QStringList rawFiles;       // FullWrite RAW formats (still need warning)
+  QStringList minimalFiles;   // No metadata support
+  QMap<QString, QString> formatWarnings;
 
   for (int i = 0; i < m_photoModel->count(); ++i) {
     const PhotoItem &photo = m_photoModel->photos()[i];
     FormatInfo info = ExifHandler::getFormatInfo(photo.filePath);
 
-    if (info.level == FormatSupportLevel::WriteRisky) {
-      riskyFiles.append(photo.fileName);
+    if (info.level == FormatSupportLevel::NeedsExifTool) {
+      exiftoolFiles.append(photo.fileName);
+      formatWarnings[photo.fileName] = info.warning;
+    } else if (info.level == FormatSupportLevel::DangerousRAW) {
+      dangerousFiles.append(photo.fileName);
       formatWarnings[photo.fileName] = info.warning;
     } else if (info.level == FormatSupportLevel::Minimal) {
       minimalFiles.append(photo.fileName);
       formatWarnings[photo.fileName] = info.warning;
+    } else if (info.level == FormatSupportLevel::FullWrite && 
+               ExifHandler::isRawFormat(photo.filePath)) {
+      // Also warn about FullWrite RAW files (ARW, NEF, CR2, etc.)
+      rawFiles.append(photo.fileName);
+      QString ext = QFileInfo(photo.filePath).suffix().toUpper();
+      formatWarnings[photo.fileName] = QString("%1 RAW - modification may affect file integrity").arg(ext);
     }
   }
 
-  // Show warning dialog if there are risky or minimal files
-  if (!riskyFiles.isEmpty() || !minimalFiles.isEmpty()) {
+  // Show warning dialog if there are files needing attention
+  if (!exiftoolFiles.isEmpty() || !dangerousFiles.isEmpty() ||
+      !rawFiles.isEmpty() || !minimalFiles.isEmpty()) {
     QString warningText;
 
-    if (!riskyFiles.isEmpty()) {
+    if (!exiftoolFiles.isEmpty()) {
+      bool exiftoolAvailable = ExifToolWriter::isAvailable();
       warningText +=
-          QString("<b>%1 file(s) with limited write support:</b><br>")
-              .arg(riskyFiles.size());
-      for (const QString &file : riskyFiles) {
-        warningText +=
-            QString(
-                "• %1<br><i style='color: #666; font-size: small;'>%2</i><br>")
-                .arg(file)
-                .arg(formatWarnings[file]);
+          QString("<b>%1 file(s) will use external exiftool:</b><br>")
+              .arg(exiftoolFiles.size());
+      const int maxShow = 10;
+      int shown = 0;
+      for (const QString &file : exiftoolFiles) {
+        if (shown < maxShow) {
+          warningText += QString("• %1<br>").arg(file);
+          ++shown;
+        } else {
+          break;
+        }
+      }
+      if (exiftoolFiles.size() > maxShow) {
+        warningText += QString("<i>... and %1 more</i><br>")
+                           .arg(exiftoolFiles.size() - maxShow);
+      }
+      if (exiftoolAvailable) {
+        warningText += "<br><span style='color: green;'>✓ exiftool is available</span><br>";
+      } else {
+        warningText += "<br><span style='color: red;'>✗ exiftool is NOT available - these files will fail</span><br>";
+      }
+    }
+
+    if (!rawFiles.isEmpty()) {
+      if (!warningText.isEmpty())
+        warningText += "<br>";
+      warningText += QString("<b>⚠️ %1 RAW file(s) (modification may affect file integrity):</b><br>")
+                         .arg(rawFiles.size());
+      const int maxShow = 10;
+      int shown = 0;
+      for (const QString &file : rawFiles) {
+        if (shown < maxShow) {
+          warningText +=
+              QString(
+                  "• %1<br><i style='color: #666; font-size: small;'>%2</i><br>")
+                  .arg(file)
+                  .arg(formatWarnings[file]);
+          ++shown;
+        } else {
+          break;
+        }
+      }
+      if (rawFiles.size() > maxShow) {
+        warningText += QString("<i>... and %1 more</i><br>")
+                           .arg(rawFiles.size() - maxShow);
+      }
+    }
+
+    if (!dangerousFiles.isEmpty()) {
+      if (!warningText.isEmpty())
+        warningText += "<br>";
+      warningText += QString("<b>⚠️ %1 file(s) with risky RAW format:</b><br>")
+                         .arg(dangerousFiles.size());
+      const int maxShow = 10;
+      int shown = 0;
+      for (const QString &file : dangerousFiles) {
+        if (shown < maxShow) {
+          warningText +=
+              QString(
+                  "• %1<br><i style='color: #666; font-size: small;'>%2</i><br>")
+                  .arg(file)
+                  .arg(formatWarnings[file]);
+          ++shown;
+        } else {
+          break;
+        }
+      }
+      if (dangerousFiles.size() > maxShow) {
+        warningText += QString("<i>... and %1 more</i><br>")
+                           .arg(dangerousFiles.size() - maxShow);
       }
     }
 
@@ -268,14 +344,21 @@ void MainWindow::onProcessPhotos() {
       if (!warningText.isEmpty())
         warningText += "<br>";
       warningText +=
-          QString("<b>%1 file(s) with minimal/no metadata support:</b><br>")
+          QString("<b>%1 file(s) with no metadata support (will skip):</b><br>")
               .arg(minimalFiles.size());
+      const int maxShow = 10;
+      int shown = 0;
       for (const QString &file : minimalFiles) {
-        warningText +=
-            QString(
-                "• %1<br><i style='color: #666; font-size: small;'>%2</i><br>")
-                .arg(file)
-                .arg(formatWarnings[file]);
+        if (shown < maxShow) {
+          warningText += QString("• %1<br>").arg(file);
+          ++shown;
+        } else {
+          break;
+        }
+      }
+      if (minimalFiles.size() > maxShow) {
+        warningText += QString("<i>... and %1 more</i><br>")
+                           .arg(minimalFiles.size() - maxShow);
       }
     }
 
@@ -289,6 +372,12 @@ void MainWindow::onProcessPhotos() {
     msgBox.setText(warningText);
     msgBox.setStandardButtons(QMessageBox::Yes | QMessageBox::Cancel);
     msgBox.setDefaultButton(QMessageBox::Yes);
+    
+    // Make the dialog scrollable and set reasonable size limits
+    msgBox.setMinimumWidth(500);
+    msgBox.setMaximumWidth(700);
+    msgBox.setMinimumHeight(200);
+    msgBox.setMaximumHeight(600);
 
     if (msgBox.exec() != QMessageBox::Yes) {
       return;

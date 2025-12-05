@@ -17,13 +17,13 @@ struct GpsCoord {
 };
 
 /**
- * @brief Support level for file format metadata editing via exiv2.
+ * @brief Support level for file format metadata editing.
  */
 enum class FormatSupportLevel {
-  FullWrite,  // Exif read/write fully supported
-  WriteRisky, // Write may work but has limitations or is read-only per exiv2
-              // docs
-  Minimal     // Almost no metadata support (e.g., BMP, GIF)
+  FullWrite,     // exiv2 handles natively (JPEG, TIFF, DNG, good RAWs, PNG)
+  NeedsExifTool, // Requires external exiftool (HEIC, AVIF, CR3, JXL)
+  DangerousRAW,  // May work with exiv2 but risky for proprietary RAW
+  Minimal        // No metadata support (BMP, GIF, TGA)
 };
 
 /**
@@ -115,6 +115,13 @@ public:
    * @return true if format is safe to write
    */
   static bool canSafelyWrite(const QString &path);
+
+  /**
+   * @brief Check if file is a RAW format.
+   * @param path File path to check
+   * @return true if file is a RAW format
+   */
+  static bool isRawFormat(const QString &path);
 
 private:
   static QString s_lastError;

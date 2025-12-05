@@ -2,6 +2,7 @@
 #include <pugixml.hpp>
 #include <QFile>
 #include <QDebug>
+#include <QTimeZone>
 #include <algorithm>
 
 namespace lyp {
@@ -53,7 +54,7 @@ QVector<TrackPoint> GpxParser::parse(const QString& filePath)
                         point.timestamp = QDateTime::fromString(timeStr, "yyyy-MM-dd HH:mm:ss");
                     }
                     // Ensure UTC
-                    point.timestamp.setTimeSpec(Qt::UTC);
+                    point.timestamp.setTimeZone(QTimeZone::utc());
                 }
                 
                 // Parse elevation (optional child element)

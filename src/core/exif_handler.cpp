@@ -2,6 +2,7 @@
 #include <QDebug>
 #include <QFileInfo>
 #include <QHash>
+#include <QTimeZone>
 #include <cmath>
 #include <exiv2/exiv2.hpp>
 
@@ -13,7 +14,7 @@ QString ExifHandler::s_lastError;
 // Key: extension (lowercase), Value: {level, warning}
 static const QHash<QString, FormatInfo> &getFormatDatabase() {
   static const QHash<QString, FormatInfo> db = {
-      // Full write support
+      // FullWrite - exiv2 handles natively
       {"jpg", {FormatSupportLevel::FullWrite, ""}},
       {"jpeg", {FormatSupportLevel::FullWrite, ""}},
       {"tiff", {FormatSupportLevel::FullWrite, ""}},
@@ -30,55 +31,44 @@ static const QHash<QString, FormatInfo> &getFormatDatabase() {
       {"exv", {FormatSupportLevel::FullWrite, ""}}, // Exiv2 sidecar
       {"psd", {FormatSupportLevel::FullWrite, ""}}, // Photoshop
       {"pgf", {FormatSupportLevel::FullWrite, ""}},
+      {"png", {FormatSupportLevel::FullWrite, ""}}, // XMP GPS works
 
-      // Risky write - may work but documented as read-only or limited
-      {"cr3",
-       {FormatSupportLevel::WriteRisky,
-        "CR3 (Canon) has read-only Exif support in exiv2. Write may fail."}},
-      {"raf",
-       {FormatSupportLevel::WriteRisky,
-        "RAF (Fujifilm) has partial/read-only support. Write may fail."}},
-      {"rw2",
-       {FormatSupportLevel::WriteRisky,
-        "RW2 (Panasonic) has read-only Exif support. Write may fail."}},
-      {"sr2",
-       {FormatSupportLevel::WriteRisky,
-        "SR2 (Sony) has read-only Exif support. Write may fail."}},
-      {"mrw",
-       {FormatSupportLevel::WriteRisky,
-        "MRW (Minolta) has read-only Exif support. Write may fail."}},
+      // NeedsExifTool - BMFF formats require external exiftool
       {"heic",
-       {FormatSupportLevel::WriteRisky,
-        "HEIC has read-only Exif support. Write may fail."}},
+       {FormatSupportLevel::NeedsExifTool, "Will use external exiftool"}},
       {"heif",
-       {FormatSupportLevel::WriteRisky,
-        "HEIF has read-only Exif support. Write may fail."}},
+       {FormatSupportLevel::NeedsExifTool, "Will use external exiftool"}},
       {"avif",
-       {FormatSupportLevel::WriteRisky,
-        "AVIF has read-only Exif support. Write may fail."}},
+       {FormatSupportLevel::NeedsExifTool, "Will use external exiftool"}},
+      {"cr3",
+       {FormatSupportLevel::NeedsExifTool, "Will use external exiftool"}},
       {"jxl",
-       {FormatSupportLevel::WriteRisky,
-        "JXL has read-only support. Naked codestream files have no metadata."}},
-      {"crw",
-       {FormatSupportLevel::WriteRisky,
-        "CRW (Canon old) supports Exif but no IPTC/XMP."}},
-      {"png",
-       {FormatSupportLevel::WriteRisky,
-        "PNG uses XMP for GPS (no native Exif). May not work in all apps."}},
-      {"raw",
-       {FormatSupportLevel::WriteRisky,
-        "Generic RAW format - support varies by actual format."}},
+       {FormatSupportLevel::NeedsExifTool, "Will use external exiftool"}},
 
-      // Minimal support - only image dimensions/MIME recognized
-      {"bmp",
-       {FormatSupportLevel::Minimal,
-        "BMP has minimal support - only dimensions recognized, no metadata."}},
-      {"gif",
-       {FormatSupportLevel::Minimal,
-        "GIF has minimal support - only dimensions recognized, no metadata."}},
-      {"tga",
-       {FormatSupportLevel::Minimal,
-        "TGA has minimal support - only dimensions recognized, no metadata."}},
+      // DangerousRAW - may work but risky for proprietary formats
+      {"raf",
+       {FormatSupportLevel::DangerousRAW,
+        "Fujifilm RAW - modification may corrupt file"}},
+      {"rw2",
+       {FormatSupportLevel::DangerousRAW,
+        "Panasonic RAW - modification may corrupt file"}},
+      {"sr2",
+       {FormatSupportLevel::DangerousRAW,
+        "Sony old RAW - modification may corrupt file"}},
+      {"mrw",
+       {FormatSupportLevel::DangerousRAW,
+        "Minolta RAW - modification may corrupt file"}},
+      {"crw",
+       {FormatSupportLevel::DangerousRAW,
+        "Canon old RAW - modification may corrupt file"}},
+      {"raw",
+       {FormatSupportLevel::DangerousRAW,
+        "Generic RAW - modification may corrupt file"}},
+
+      // Minimal support - no metadata
+      {"bmp", {FormatSupportLevel::Minimal, "No metadata support"}},
+      {"gif", {FormatSupportLevel::Minimal, "No metadata support"}},
+      {"tga", {FormatSupportLevel::Minimal, "No metadata support"}},
   };
   return db;
 }
@@ -131,7 +121,7 @@ ExifHandler::getPhotoTimestamp(const QString &filePath,
         QDateTime dt = QDateTime::fromString(dateStr, "yyyy:MM:dd HH:mm:ss");
         if (dt.isValid()) {
           // Convert from local camera time to UTC
-          dt.setTimeSpec(Qt::UTC);
+          dt.setTimeZone(QTimeZone::utc());
           if (timeOffsetSeconds != 0.0) {
             dt = dt.addSecs(static_cast<qint64>(-timeOffsetSeconds));
           }
@@ -300,8 +290,8 @@ bool ExifHandler::writeGpsData(const QString &filePath, double latitude,
     FormatInfo formatInfo = getFormatInfo(filePath);
     QString errorMsg = QString::fromStdString(e.what());
 
-    if (formatInfo.level == FormatSupportLevel::WriteRisky) {
-      s_lastError = QString("Failed to write GPS to %1 format: %2\n%3")
+    if (formatInfo.level == FormatSupportLevel::DangerousRAW) {
+      s_lastError = QString("Failed to write GPS to %1 RAW: %2\n%3")
                         .arg(QFileInfo(filePath).suffix().toUpper())
                         .arg(errorMsg)
                         .arg(formatInfo.warning);
@@ -327,9 +317,10 @@ FormatInfo ExifHandler::getFormatInfo(const QString &path) {
     return db.value(ext);
   }
 
-  // Unknown format - treat as risky
-  return {FormatSupportLevel::WriteRisky,
-          QString("Unknown format '%1' - write support uncertain.").arg(ext)};
+  // Unknown format - treat as dangerous RAW
+  return {
+      FormatSupportLevel::DangerousRAW,
+      QString("Unknown format '%1' - modification may corrupt file").arg(ext)};
 }
 
 QStringList ExifHandler::getExtensionsByLevel(FormatSupportLevel level) {
@@ -347,6 +338,16 @@ QStringList ExifHandler::getExtensionsByLevel(FormatSupportLevel level) {
 
 bool ExifHandler::canSafelyWrite(const QString &path) {
   return getFormatInfo(path).level == FormatSupportLevel::FullWrite;
+}
+
+bool ExifHandler::isRawFormat(const QString &path) {
+  QString ext = QFileInfo(path).suffix().toLower();
+  // List of all RAW format extensions
+  static const QStringList rawExtensions = {
+      "arw", "nef", "cr2", "cr3", "dng", "orf", "pef", "srw",  // FullWrite RAW
+      "raf", "rw2", "sr2", "mrw", "crw", "raw"                  // DangerousRAW
+  };
+  return rawExtensions.contains(ext);
 }
 
 } // namespace lyp

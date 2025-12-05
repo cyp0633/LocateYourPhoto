@@ -1,5 +1,6 @@
 #include "photo_processor.h"
 #include "exif_handler.h"
+#include "exiftool_writer.h"
 #include "gps_matcher.h"
 #include "gpx_parser.h"
 #include "models/photo_list_model.h"
@@ -105,6 +106,18 @@ void PhotoProcessor::processPhotos(PhotoListModel *model,
     photo.state = PhotoState::Processing;
     model->updatePhoto(i, photo);
 
+    // Check format support level
+    FormatInfo formatInfo = ExifHandler::getFormatInfo(photo.filePath);
+
+    // Skip files with no metadata support
+    if (formatInfo.level == FormatSupportLevel::Minimal) {
+      photo.state = PhotoState::Skipped;
+      photo.errorMessage = "No metadata support for this format";
+      model->updatePhoto(i, photo);
+      emit photoProcessed(i, false);
+      continue;
+    }
+
     // Skip if already has GPS and not overwriting
     if (photo.hasExistingGps && !settings.overwriteExistingGps) {
       photo.state = PhotoState::Skipped;
@@ -148,15 +161,38 @@ void PhotoProcessor::processPhotos(PhotoListModel *model,
 
     // Write GPS data (unless dry run)
     if (!settings.dryRun) {
-      bool writeSuccess =
-          ExifHandler::writeGpsData(photo.filePath, lat, lon, elevation);
+      bool writeSuccess = false;
 
-      if (!writeSuccess) {
-        photo.state = PhotoState::Error;
-        photo.errorMessage = ExifHandler::lastError();
-        model->updatePhoto(i, photo);
-        emit photoProcessed(i, false);
-        continue;
+      if (formatInfo.level == FormatSupportLevel::NeedsExifTool) {
+        // Use exiftool for BMFF formats
+        if (!ExifToolWriter::isAvailable()) {
+          photo.state = PhotoState::Error;
+          photo.errorMessage =
+              "exiftool not found - install it to write to this format";
+          model->updatePhoto(i, photo);
+          emit photoProcessed(i, false);
+          continue;
+        }
+        writeSuccess =
+            ExifToolWriter::writeGpsData(photo.filePath, lat, lon, elevation);
+        if (!writeSuccess) {
+          photo.state = PhotoState::Error;
+          photo.errorMessage = ExifToolWriter::lastError();
+          model->updatePhoto(i, photo);
+          emit photoProcessed(i, false);
+          continue;
+        }
+      } else {
+        // Use exiv2 for FullWrite and DangerousRAW formats
+        writeSuccess =
+            ExifHandler::writeGpsData(photo.filePath, lat, lon, elevation);
+        if (!writeSuccess) {
+          photo.state = PhotoState::Error;
+          photo.errorMessage = ExifHandler::lastError();
+          model->updatePhoto(i, photo);
+          emit photoProcessed(i, false);
+          continue;
+        }
       }
     }
 
