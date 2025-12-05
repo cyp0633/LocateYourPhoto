@@ -10,47 +10,51 @@ namespace lyp {
  * @brief Qt model for the photo list view.
  */
 class PhotoListModel : public QAbstractListModel {
-    Q_OBJECT
+  Q_OBJECT
 
 public:
-    enum Roles {
-        FilePathRole = Qt::UserRole + 1,
-        FileNameRole,
-        CaptureTimeRole,
-        HasGpsRole,
-        StateRole,
-        LatitudeRole,
-        LongitudeRole,
-        ErrorMessageRole
-    };
+  enum Roles {
+    FilePathRole = Qt::UserRole + 1,
+    FileNameRole,
+    CaptureTimeRole,
+    HasGpsRole,
+    StateRole,
+    LatitudeRole,
+    LongitudeRole,
+    ErrorMessageRole
+  };
 
-    explicit PhotoListModel(QObject* parent = nullptr);
+  explicit PhotoListModel(QObject *parent = nullptr);
 
-    // QAbstractListModel interface
-    int rowCount(const QModelIndex& parent = QModelIndex()) const override;
-    QVariant data(const QModelIndex& index, int role = Qt::DisplayRole) const override;
-    QHash<int, QByteArray> roleNames() const override;
+  // QAbstractListModel interface
+  int rowCount(const QModelIndex &parent = QModelIndex()) const override;
+  QVariant data(const QModelIndex &index,
+                int role = Qt::DisplayRole) const override;
+  QHash<int, QByteArray> roleNames() const override;
 
-    // Photo management
-    void addPhoto(const PhotoItem& photo);
-    void addPhotos(const QVector<PhotoItem>& photos);
-    void removePhoto(int index);
-    void clear();
-    
-    // Update photo state after processing
-    void updatePhoto(int index, const PhotoItem& photo);
-    
-    // Accessors
-    const QVector<PhotoItem>& photos() const { return m_photos; }
-    PhotoItem& photoAt(int index) { return m_photos[index]; }
-    int count() const { return m_photos.size(); }
+  // Photo management
+  void addPhoto(const PhotoItem &photo);
+  void addPhotos(const QVector<PhotoItem> &photos);
+  void removePhoto(int index);
+  void clear();
+
+  // Update photo state after processing
+  void updatePhoto(int index, const PhotoItem &photo);
+
+  // Reset all photos to pending state (for reprocessing)
+  void resetAllStates();
+
+  // Accessors
+  const QVector<PhotoItem> &photos() const { return m_photos; }
+  PhotoItem &photoAt(int index) { return m_photos[index]; }
+  int count() const { return m_photos.size(); }
 
 signals:
-    void photoAdded(int index);
-    void photoUpdated(int index);
+  void photoAdded(int index);
+  void photoUpdated(int index);
 
 private:
-    QVector<PhotoItem> m_photos;
+  QVector<PhotoItem> m_photos;
 };
 
 } // namespace lyp
