@@ -49,6 +49,11 @@ public:
   PhotoItem &photoAt(int index) { return m_photos[index]; }
   int count() const { return m_photos.size(); }
 
+  /**
+   * @brief Check if a file path is already in the model.
+   */
+  bool containsFile(const QString &filePath) const;
+
 signals:
   void photoAdded(int index);
   void photoUpdated(int index);

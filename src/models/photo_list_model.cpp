@@ -20,6 +20,14 @@ QVariant PhotoListModel::data(const QModelIndex &index, int role) const {
   case Qt::DisplayRole:
   case FileNameRole:
     return photo.fileName;
+  case Qt::ToolTipRole: {
+    // Build tooltip with file path and error message if present
+    QString tooltip = photo.filePath;
+    if (!photo.errorMessage.isEmpty()) {
+      tooltip += "\n\n" + photo.errorMessage;
+    }
+    return tooltip;
+  }
   case FilePathRole:
     return photo.filePath;
   case CaptureTimeRole:
@@ -105,6 +113,15 @@ void PhotoListModel::resetAllStates() {
     m_photos[i].matchedElevation.reset();
   }
   emit dataChanged(createIndex(0, 0), createIndex(m_photos.size() - 1, 0));
+}
+
+bool PhotoListModel::containsFile(const QString &filePath) const {
+  for (const PhotoItem &photo : m_photos) {
+    if (photo.filePath == filePath) {
+      return true;
+    }
+  }
+  return false;
 }
 
 } // namespace lyp

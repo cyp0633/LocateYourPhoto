@@ -1,4 +1,5 @@
 #include "main_window.h"
+#include "core/exif_handler.h"
 #include "core/photo_processor.h"
 #include "file_list_panel.h"
 #include "map_panel.h"
@@ -11,6 +12,7 @@
 #include <QFileDialog>
 #include <QFileInfo>
 #include <QFormLayout>
+#include <QMap>
 #include <QMenu>
 #include <QMenuBar>
 #include <QMessageBox>
@@ -193,10 +195,17 @@ void MainWindow::onLoadGpx() {
 }
 
 void MainWindow::onAddPhotos() {
-  QStringList filePaths = QFileDialog::getOpenFileNames(
-      this, "Add Photos", QString(),
-      "Photo Files (*.jpg *.jpeg *.arw *.nef *.cr2 *.dng *.heic *.heif);;All "
-      "Files (*)");
+  // Build filter from all supported extensions
+  QStringList exts = ExifHandler::supportedExtensions();
+  QStringList patterns;
+  for (const QString &ext : exts) {
+    patterns << QString("*.%1").arg(ext);
+  }
+  QString filter =
+      QString("Photo Files (%1);;All Files (*)").arg(patterns.join(" "));
+
+  QStringList filePaths =
+      QFileDialog::getOpenFileNames(this, "Add Photos", QString(), filter);
 
   if (!filePaths.isEmpty()) {
     onPhotosDropped(filePaths);
@@ -218,6 +227,72 @@ void MainWindow::onProcessPhotos() {
   if (m_photoModel->count() == 0) {
     QMessageBox::warning(this, "No Photos", "Please add photos to process.");
     return;
+  }
+
+  // Check for risky file formats before processing
+  QStringList riskyFiles;
+  QStringList minimalFiles;
+  QMap<QString, QString> formatWarnings; // file -> warning message
+
+  for (int i = 0; i < m_photoModel->count(); ++i) {
+    const PhotoItem &photo = m_photoModel->photos()[i];
+    FormatInfo info = ExifHandler::getFormatInfo(photo.filePath);
+
+    if (info.level == FormatSupportLevel::WriteRisky) {
+      riskyFiles.append(photo.fileName);
+      formatWarnings[photo.fileName] = info.warning;
+    } else if (info.level == FormatSupportLevel::Minimal) {
+      minimalFiles.append(photo.fileName);
+      formatWarnings[photo.fileName] = info.warning;
+    }
+  }
+
+  // Show warning dialog if there are risky or minimal files
+  if (!riskyFiles.isEmpty() || !minimalFiles.isEmpty()) {
+    QString warningText;
+
+    if (!riskyFiles.isEmpty()) {
+      warningText +=
+          QString("<b>%1 file(s) with limited write support:</b><br>")
+              .arg(riskyFiles.size());
+      for (const QString &file : riskyFiles) {
+        warningText +=
+            QString(
+                "• %1<br><i style='color: #666; font-size: small;'>%2</i><br>")
+                .arg(file)
+                .arg(formatWarnings[file]);
+      }
+    }
+
+    if (!minimalFiles.isEmpty()) {
+      if (!warningText.isEmpty())
+        warningText += "<br>";
+      warningText +=
+          QString("<b>%1 file(s) with minimal/no metadata support:</b><br>")
+              .arg(minimalFiles.size());
+      for (const QString &file : minimalFiles) {
+        warningText +=
+            QString(
+                "• %1<br><i style='color: #666; font-size: small;'>%2</i><br>")
+                .arg(file)
+                .arg(formatWarnings[file]);
+      }
+    }
+
+    warningText +=
+        "<br>These files may fail to write GPS data. Continue anyway?";
+
+    QMessageBox msgBox(this);
+    msgBox.setWindowTitle("Format Compatibility Warning");
+    msgBox.setIcon(QMessageBox::Warning);
+    msgBox.setTextFormat(Qt::RichText);
+    msgBox.setText(warningText);
+    msgBox.setStandardButtons(QMessageBox::Yes | QMessageBox::Cancel);
+    msgBox.setDefaultButton(QMessageBox::Yes);
+
+    if (msgBox.exec() != QMessageBox::Yes) {
+      return;
+    }
   }
 
   // Reset all photo states before reprocessing
