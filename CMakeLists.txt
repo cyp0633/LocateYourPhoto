@@ -32,6 +32,7 @@ set(SOURCES
     src/main.cpp
     src/core/gpx_parser.cpp
     src/core/exif_handler.cpp
+    src/core/exiftool_writer.cpp
     src/core/gps_matcher.cpp
     src/core/photo_processor.cpp
     src/ui/main_window.cpp
@@ -43,6 +44,7 @@ set(SOURCES
 set(HEADERS
     src/core/gpx_parser.h
     src/core/exif_handler.h
+    src/core/exiftool_writer.h
     src/core/gps_matcher.h
     src/core/photo_processor.h
     src/models/track_point.h
